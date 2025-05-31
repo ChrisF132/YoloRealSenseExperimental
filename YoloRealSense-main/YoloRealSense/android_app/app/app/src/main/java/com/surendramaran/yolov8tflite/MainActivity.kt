@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     configureAudioRouting()
                     pauseSpeechRecognition()
 
-                    // 🔍 Immediately verify if device is seen
+                    
                     val count = try {
                         rsContext.queryDevices().deviceCount
                     } catch (e: Exception) {
@@ -356,14 +356,14 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
                 runOnUiThread {
                     binding.cameraPreview.setImageBitmap(bitmap)
-                    binding.inferenceTime.text = "" // Optional placeholder
+                    binding.inferenceTime.text = "" 
                 }
 
                 //Run detection in the background
                 if (isDetectionActive && ::detector.isInitialized) {
                     cameraExecutor.execute {
                         val startTime = System.currentTimeMillis()
-                        detector.detect(bitmap) // this will trigger onDetect()
+                        detector.detect(bitmap)
                         val endTime = System.currentTimeMillis()
                         Log.d(TAG, "Frame inference took ${endTime - startTime}ms")
                     }
@@ -396,7 +396,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Register USB receiver for both permission and connection events
+        
 
         val filter = IntentFilter().apply {
 
@@ -418,7 +418,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
 
 
-        // Initialize audio manager and focus request
+        
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
 
@@ -443,7 +443,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         detector.setup()
 
-        // Initialize RealSense context (MUST be before creating RsContext)
+       
         RsContext.init(applicationContext)
 
         rsContext = RsContext().apply {
@@ -599,7 +599,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
                 }
 
-                errorBackoffDelay = 1000L // Reset backoff on success
+                errorBackoffDelay = 1000L 
 
             }
             override fun onError(error: Int) {
@@ -631,7 +631,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     }
                     SpeechRecognizer.ERROR_NO_MATCH -> {
                         Log.w(TAG, "No match - resuming listening")
-                        scheduleRetryWithBackoff()  // just retry softly
+                        scheduleRetryWithBackoff() 
                     }
 
                     else -> {
@@ -668,7 +668,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
 
         } else {
-            resetRecognizer() // <-- this is crucial to start listening
+            resetRecognizer() 
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -723,7 +723,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 Log.d(TAG, "SpeechRecognizer reset complete")
                 Handler(Looper.getMainLooper()).postDelayed({
                     safeStartListening()
-                }, 300)  // Give it time to become ready
+                }, 300) 
             } else {
                 Log.e(TAG, "Speech recognition not available on device")
             }
@@ -973,7 +973,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                resetRecognizer()  // this initializes and starts listening
+                resetRecognizer()  
             } else {
                 Log.e(TAG, "Permissions not granted")
             }
