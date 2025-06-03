@@ -20,6 +20,7 @@ import java.io.InputStreamReader
 import kotlin.math.exp
 
 class Detector(
+
     private val context: Context,
     private val modelPath: String,
     private val labelPath: String,
@@ -34,10 +35,10 @@ class Detector(
     private var numChannel = 0
     private var numElements = 0
 
-    private val imageProcessor = ImageProcessor.Builder()
-        .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
+    val imageProcessor = ImageProcessor.Builder()
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
+
 
     fun setup() {
         val model = FileUtil.loadMappedFile(context, modelPath)
@@ -101,11 +102,13 @@ class Detector(
         val output = TensorBuffer.createFixedSize(intArrayOf(1, numElements, numChannel), OUTPUT_IMAGE_TYPE)
         interpreter?.run(imageBuffer, output.buffer)
 
-        val bestBoxes = bestBox(output.floatArray, frame.width, frame.height)
+        val bestBoxes = bestBox(output.floatArray, tensorWidth, tensorHeight)
         if (bestBoxes.isNullOrEmpty()) {
             detectorListener.onEmptyDetect()
         } else {
-            detectorListener.onDetect(bestBoxes, SystemClock.uptimeMillis())
+            val startTime = System.currentTimeMillis()
+            val endTime = System.currentTimeMillis()
+            detectorListener.onDetect(bestBoxes, endTime-startTime)
         }
     }
 
@@ -151,6 +154,9 @@ class Detector(
                         clsName = label
                     )
                 )
+                Log.d("YOLO", "Detection confidence: $conf, class index: $maxClassIdx, objConf: $objConf")
+                Log.d("YOLO", "Top class score: $maxClassConf")
+
             }
         }
         return if (boxes.isEmpty()) null else applyNMS(boxes)

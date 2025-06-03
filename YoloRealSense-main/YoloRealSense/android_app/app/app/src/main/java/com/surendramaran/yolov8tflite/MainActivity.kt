@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             Manifest.permission.MODIFY_AUDIO_SETTINGS
         )
     }
-
+    private var testvalue = true
     private lateinit var binding: ActivityMainBinding
     private lateinit var detector: Detector
     private var isDetectionActive = false
@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     configureAudioRouting()
                     pauseSpeechRecognition()
 
-                    // 🔍 Immediately verify if device is seen
+
                     val count = try {
                         rsContext.queryDevices().deviceCount
                     } catch (e: Exception) {
@@ -198,34 +198,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             }
         }
     }
-    //Usb checker helper method
-    private fun checkUsbPermissionsWithRetry(attempts: Int = 5) {
-        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-
-        val device = usbManager.deviceList.values.firstOrNull()
-        if (device == null && attempts > 0) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                checkUsbPermissionsWithRetry(attempts - 1)
-            }, 300)
-            return
-        }
-
-        device?.let {
-            if (!usbManager.hasPermission(it)) {
-                val permissionIntent = PendingIntent.getBroadcast(
-                    this, 0, Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE
-                )
-                usbManager.requestPermission(it, permissionIntent)
-            } else {
-                isUsbConnected = true
-                configureAudioRouting()
-                startRealsensePipeline()
-            }
-        } ?: Log.e(TAG, "No USB device found after retries")
-    }
-
-
-
 
     private fun configureAudioRouting() {
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
@@ -353,17 +325,25 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     }
                 }
 
+                Log.d(TAG, "Bitmap to detect size: ${bitmap.width}x${bitmap.height}")
+                Log.d(TAG, "Bitmap recycled: ${bitmap.isRecycled}")
+                val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+                Log.d(TAG, "Center pixel ARGB: ${Integer.toHexString(pixel)}")
+
+
 
                 runOnUiThread {
                     binding.cameraPreview.setImageBitmap(bitmap)
-                    binding.inferenceTime.text = "" // Optional placeholder
+                    binding.inferenceTime.text = ""
                 }
 
                 //Run detection in the background
                 if (isDetectionActive && ::detector.isInitialized) {
                     cameraExecutor.execute {
                         val startTime = System.currentTimeMillis()
-                        detector.detect(bitmap) // this will trigger onDetect()
+                        detector.detect(bitmap)
+                        Log.d(TAG, "RealSense bitmap size: ${bitmap.width}x${bitmap.height}")
+
                         val endTime = System.currentTimeMillis()
                         Log.d(TAG, "Frame inference took ${endTime - startTime}ms")
                     }
@@ -375,64 +355,44 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     private fun VideoFrame.toBitmap(): Bitmap {
         return try {
-            val byteArray = ByteArray(dataSize).apply {
-                getData(this)
-            }
+            val byteArray = ByteArray(dataSize)
+            getData(byteArray)
             val buffer = ByteBuffer.wrap(byteArray)
 
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
-                copyPixelsFromBuffer(buffer)
-                if (isRecycled) {
-                    Log.e(TAG, "Bitmap was recycled immediately!")
+            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            bmp.copyPixelsFromBuffer(buffer)
 
-                }
-            }
+            bmp
         } catch (e: Exception) {
             Log.e(TAG, "Bitmap conversion failed", e)
-            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
         }
     }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Register USB receiver for both permission and connection events
 
         val filter = IntentFilter().apply {
 
             addAction(ACTION_USB_PERMISSION)
-
             addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
-
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
-
         }
 
         registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
 
-
-
         binding = ActivityMainBinding.inflate(layoutInflater)
-
         setContentView(binding.root)
-
-
-
-        // Initialize audio manager and focus request
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
 
         audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-
             .setAudioAttributes(AudioAttributes.Builder()
-
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-
                 .build())
-
-
             .build()
 
 
@@ -443,7 +403,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         detector.setup()
 
-        // Initialize RealSense context (MUST be before creating RsContext)
+
         RsContext.init(applicationContext)
 
         rsContext = RsContext().apply {
@@ -462,37 +422,33 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         Log.d(TAG, "Initial RealSense device count: ${rsContext.queryDevices().deviceCount}")
 
-
-
-
-
         // Initialize TTS
 
-    Handler(Looper.getMainLooper()).postDelayed({
-        textToSpeech = TextToSpeech(this) { status ->
+        Handler(Looper.getMainLooper()).postDelayed({
+            textToSpeech = TextToSpeech(this) { status ->
 
-            if (status == TextToSpeech.SUCCESS) {
+                if (status == TextToSpeech.SUCCESS) {
 
-                val result = textToSpeech.setLanguage(Locale.US)
+                    val result = textToSpeech.setLanguage(Locale.US)
 
-                isTTSInitialized = result != TextToSpeech.LANG_MISSING_DATA &&
+                    isTTSInitialized = result != TextToSpeech.LANG_MISSING_DATA &&
 
-                        result != TextToSpeech.LANG_NOT_SUPPORTED
+                            result != TextToSpeech.LANG_NOT_SUPPORTED
 
-                if (!isTTSInitialized) {
+                    if (!isTTSInitialized) {
 
-                    Log.e(TAG, "TTS Language not supported")
+                        Log.e(TAG, "TTS Language not supported")
+
+                    }
+
+                } else {
+
+                    Log.e(TAG, "TTS Initialization failed")
 
                 }
 
-            } else {
-
-                Log.e(TAG, "TTS Initialization failed")
-
             }
-
-        }
-    }, 1000)
+        }, 1000)
 
 
 
@@ -525,13 +481,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
                     val spokenText = it[0].lowercase(Locale.ROOT)
 
-
-
                     if (!isProcessingCommand) {
-
                         isProcessingCommand = true
-
-
 
                         when {
 
@@ -559,89 +510,53 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                                 }
                             }
 
-
                             "stop detection" in spokenText && isDetectionActive -> {
-
                                 speak("Stopping detection")
-
                                 stopCamera()
-
                                 isDetectionActive = false
-
                             }
-
                             "explain" in spokenText -> {
-
                                 speak("Explaining the surroundings")
-
                                 currentMode = DetectionMode.EXPLAIN_SURROUNDING
-
                             }
-
                         }
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         Log.d(TAG, "Recognized: ${matches?.joinToString()}")
-
-
-
 
                         Handler(Looper.getMainLooper()).postDelayed({
 
                             isProcessingCommand = false
                             safeStartListening()
 
-
                         }, 1500)
-
-
-
                     }
-
                 }
-
-                errorBackoffDelay = 1000L // Reset backoff on success
-
+                errorBackoffDelay = 1000L
             }
             override fun onError(error: Int) {
                 isListening = false
                 Log.e(TAG, "Speech recognition error: $error")
 
-
-
                 when (error) {
 
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
-
                         Log.e(TAG, "Missing permissions")
-
                         requestAudioPermission()
-
                     }
-
                     SpeechRecognizer.ERROR_CLIENT -> {
-
                         resetRecognizer()
-
                     }
-
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-
                         scheduleRetryWithBackoff()
-
                     }
                     SpeechRecognizer.ERROR_NO_MATCH -> {
                         Log.w(TAG, "No match - resuming listening")
-                        scheduleRetryWithBackoff()  // just retry softly
-                    }
-
-                    else -> {
-
                         scheduleRetryWithBackoff()
-
                     }
-
+                    else -> {
+                        scheduleRetryWithBackoff()
+                    }
                 }
-
             }
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
@@ -654,26 +569,17 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     scheduleRetryWithBackoff()
                 }
             }
-
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
         }
-
         speechRecognizer.setRecognitionListener(speechListener)
 
-
-
         if (!allPermissionsGranted()) {
-
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
-
         } else {
-            resetRecognizer() // <-- this is crucial to start listening
+            resetRecognizer()
         }
-
         cameraExecutor = Executors.newSingleThreadExecutor()
-
-
 
     }
 
@@ -697,13 +603,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
 
     private fun acquireAudioFocus(): Boolean {
-
         return audioManager.requestAudioFocus(audioFocusRequest) ==
-
                 AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-
     }
-
 
 
     private fun resetRecognizer() {
@@ -723,7 +625,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 Log.d(TAG, "SpeechRecognizer reset complete")
                 Handler(Looper.getMainLooper()).postDelayed({
                     safeStartListening()
-                }, 300)  // Give it time to become ready
+                }, 300)
             } else {
                 Log.e(TAG, "Speech recognition not available on device")
             }
@@ -731,46 +633,25 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     }
 
 
-
-
     private fun requestAudioPermission() {
-
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-
             != PackageManager.PERMISSION_GRANTED) {
-
             ActivityCompat.requestPermissions(
-
                 this,
-
                 arrayOf(Manifest.permission.RECORD_AUDIO),
-
                 REQUEST_CODE_AUDIO_PERMISSION
-
             )
-
         }
-
     }
 
 
-
     private fun scheduleRetryWithBackoff() {
-
         Handler(Looper.getMainLooper()).postDelayed({
-
             if (!isProcessingCommand) {
-
                 safeStartListening()
-
             }
-
         }, errorBackoffDelay)
-
-
-
         errorBackoffDelay = (errorBackoffDelay * 2).coerceAtMost(maxBackoffDelay)
-
     }
 
 
@@ -973,7 +854,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                resetRecognizer()  // this initializes and starts listening
+                resetRecognizer()
             } else {
                 Log.e(TAG, "Permissions not granted")
             }
