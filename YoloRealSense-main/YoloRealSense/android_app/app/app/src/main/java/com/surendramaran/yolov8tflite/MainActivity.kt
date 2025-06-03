@@ -203,9 +203,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isBluetoothScoOn = false
         audioManager.isSpeakerphoneOn = true
-        // Block USB audio input explicitly
+       
 
-        audioManager.setParameters("no_usb_audio=1") // Keeps USB audio blocked
+        audioManager.setParameters("no_usb_audio=1") 
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.setParameters("no_usb_audio=1")
 
@@ -337,7 +337,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     binding.inferenceTime.text = ""
                 }
 
-                //Run detection in the background
+                
                 if (isDetectionActive && ::detector.isInitialized) {
                     cameraExecutor.execute {
                         val startTime = System.currentTimeMillis()
