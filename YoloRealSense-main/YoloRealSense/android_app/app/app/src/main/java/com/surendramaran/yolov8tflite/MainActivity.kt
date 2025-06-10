@@ -324,6 +324,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
+    //Previous processFrame for Video Footage
 //    private fun processFrame(frames: FrameSet) {
 //        frames.first(StreamType.COLOR)?.use { colorFrame ->
 //            if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
@@ -363,8 +364,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 //        }
 //    }
 
+    //Current processFrame, processes one frame and sends to detect method
     private fun processFrame(frames: FrameSet) {
-
         if(hasSavedSingleFrame) return
 
         frames.first(StreamType.COLOR)?.use { colorFrame ->
@@ -761,7 +762,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
 
-
         Log.d(TAG, "Overlay size: ${binding.overlay.width}x${binding.overlay.height}")
         Log.d(TAG, "BoundingBox sample: ${boundingBoxes.firstOrNull()}")
         Log.d(TAG, "YOLO DETECTION TRIGGERED: ${boundingBoxes.size} boxes")
@@ -822,89 +822,53 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
 
                 val message = buildString {
-
                     append("Detected ")
-
                     highConfidenceBoxes.forEachIndexed { index, box ->
-
                         append("${box.clsName} at ${"%.1f".format(box.distance)} meters")
-
                         if (index < highConfidenceBoxes.size - 1) append(", ")
-
                     }
-
                 }
-
-
-
                 safeVibrate()
-
                 speak(message)
-
                 lastAnnouncementTime = currentTime
-
             }
-
         }
-
     }
 
 
 
     override fun onEmptyDetect() {
-
         runOnUiThread {
-
             binding.overlay.invalidate()
-
         }
-
     }
 
 
 
     private fun safeVibrate() {
-
         try {
-
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-
                 vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
-
             } else {
-
                 @Suppress("DEPRECATION")
-
                 vibrator.vibrate(50)
-
             }
 
         } catch (e: Exception) {
-
             Log.e(TAG, "Vibration error", e)
-
         }
-
     }
 
-
-
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-
     }
 
 
 
     override fun onRequestPermissionsResult(
-
         requestCode: Int,
-
         permissions: Array<out String>,
-
         grantResults: IntArray
-
     ) {
 
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -920,51 +884,33 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
 
     override fun onDestroy() {
-
         unregisterReceiver(usbReceiver)
-
         rsContext.close()
-
         super.onDestroy()
-
         detector.clear()
-
         cameraExecutor.shutdown()
-
         textToSpeech.stop()
-
         textToSpeech.shutdown()
-
         speechRecognizer.destroy()
-
         audioManager.abandonAudioFocusRequest(audioFocusRequest)
-
     }
 
 
 
     override fun onPause() {
-
         stopRealsensePipeline()
-
         stopListening()
-
         super.onPause()
-
     }
 
 
 
     override fun onResume() {
-
         super.onResume()
-
         if (isDetectionActive && rsContext.queryDevices().deviceCount > 0 && !isPipelineRunning) {
             startRealsensePipeline()
         }
-
         safeStartListening()
-
     }
 
 }
