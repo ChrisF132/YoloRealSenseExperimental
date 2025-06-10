@@ -65,8 +65,8 @@ class Detector(
 
         tensorWidth = inputShape[2]
         tensorHeight = inputShape[1]
-        numChannel = outputShape[1] // 21
-        numElements = outputShape[2] // =8400
+        numChannel = outputShape[1] 
+        numElements = outputShape[2] 
 
 
         imageProcessor = ImageProcessor.Builder()
@@ -139,11 +139,11 @@ class Detector(
         val boxes = mutableListOf<BoundingBox>()
 
         for (i in 0 until numElements) {
-            val cx = array[i]                     // Channel 0
-            val cy = array[i + numElements]       // Channel 1
-            val w  = array[i + numElements * 2]   // Channel 2
-            val h  = array[i + numElements * 3]   // Channel 3
-            val objConf = sigmoid(array[i + numElements * 4])  // Channel 4
+            val cx = array[i]                    
+            val cy = array[i + numElements]       
+            val w  = array[i + numElements * 2]  
+            val h  = array[i + numElements * 3]  
+            val objConf = sigmoid(array[i + numElements * 4]) 
 
             var maxClassConf = -1f
             var maxClassIdx = -1
