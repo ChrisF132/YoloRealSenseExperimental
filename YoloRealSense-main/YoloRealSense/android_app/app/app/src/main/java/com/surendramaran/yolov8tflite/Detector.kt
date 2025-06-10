@@ -12,6 +12,7 @@ import org.tensorflow.lite.support.common.ops.CastOp
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.support.image.ops.ResizeOp
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import java.io.BufferedReader
 import java.io.IOException
@@ -20,7 +21,6 @@ import java.io.InputStreamReader
 import kotlin.math.exp
 
 class Detector(
-
     private val context: Context,
     private val modelPath: String,
     private val labelPath: String,
@@ -35,9 +35,8 @@ class Detector(
     private var numChannel = 0
     private var numElements = 0
 
-    val imageProcessor = ImageProcessor.Builder()
-        .add(CastOp(INPUT_IMAGE_TYPE))
-        .build()
+    lateinit var imageProcessor: ImageProcessor
+
 
 
     fun setup() {
@@ -57,15 +56,24 @@ class Detector(
         val inputShape = interpreter!!.getInputTensor(0).shape()
         val outputShape = interpreter!!.getOutputTensor(0).shape()
 
+        val numChannels = outputShape[2]
+        val numClasses = numChannels - 5
+
+        Log.d("YOLO","numClasses = $numClasses")
         Log.d("YOLO", "Input shape: ${inputShape.contentToString()}")
         Log.d("YOLO", "Output shape: ${outputShape.contentToString()}")
 
-        tensorWidth = inputShape[2]  // 640
-        tensorHeight = inputShape[1] // 640
-        numElements = outputShape[1] // 8400
-        numChannel = outputShape[2]  // 21
+        tensorWidth = inputShape[2]
+        tensorHeight = inputShape[1]
+        numChannel = outputShape[1] // 21
+        numElements = outputShape[2] // =8400
 
 
+        imageProcessor = ImageProcessor.Builder()
+            .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
+            .add(CastOp(INPUT_IMAGE_TYPE))
+            .build()
+        Log.d("YOLO", "Model loaded: $modelPath")
 
         try {
             val inputStream: InputStream = context.assets.open(labelPath)
@@ -73,10 +81,10 @@ class Detector(
 
             var line: String? = reader.readLine()
             while (line != null && line != "") {
-                labels.add(line)
+                labels.add(line.trim())
                 line = reader.readLine()
             }
-
+            Log.d("YOLO", "Loaded labels: ${labels.size} -> $labels")
             reader.close()
             inputStream.close()
         } catch (e: IOException) {
@@ -90,27 +98,36 @@ class Detector(
     }
 
     fun detect(frame: Bitmap) {
+        val originalWidth = frame.width
+        val originalHeight = frame.height
+        val startTime = System.currentTimeMillis()
+
         interpreter ?: return
         if (tensorWidth == 0 || tensorHeight == 0 || numChannel == 0 || numElements == 0) return
 
         val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
         val tensorImage = TensorImage(DataType.FLOAT32)
         tensorImage.load(resizedBitmap)
+
         val processedImage = imageProcessor.process(tensorImage)
         val imageBuffer = processedImage.buffer
 
-        val output = TensorBuffer.createFixedSize(intArrayOf(1, numElements, numChannel), OUTPUT_IMAGE_TYPE)
+        val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
         interpreter?.run(imageBuffer, output.buffer)
 
-        val bestBoxes = bestBox(output.floatArray, tensorWidth, tensorHeight)
+        val rawOutput = output.floatArray
+        Log.d("YOLO", "First 20 output values: ${rawOutput.take(20).joinToString()}")
+
+        val endTime = System.currentTimeMillis()
+        val bestBoxes = bestBox(rawOutput, originalWidth, originalHeight)
+
         if (bestBoxes.isNullOrEmpty()) {
             detectorListener.onEmptyDetect()
         } else {
-            val startTime = System.currentTimeMillis()
-            val endTime = System.currentTimeMillis()
-            detectorListener.onDetect(bestBoxes, endTime-startTime)
+            detectorListener.onDetect(bestBoxes, endTime - startTime)
         }
     }
+
 
     private fun sigmoid(x: Float): Float {
         return (1f / (1f + exp(-x)))
@@ -120,17 +137,19 @@ class Detector(
 
     private fun bestBox(array: FloatArray, frameWidth: Int, frameHeight: Int): List<BoundingBox>? {
         val boxes = mutableListOf<BoundingBox>()
+
         for (i in 0 until numElements) {
-            val cx = array[i * numChannel + 0]
-            val cy = array[i * numChannel + 1]
-            val w = array[i * numChannel + 2]
-            val h = array[i * numChannel + 3]
-            val objConf = sigmoid(array[i * numChannel + 4])
+            val cx = array[i]                     // Channel 0
+            val cy = array[i + numElements]       // Channel 1
+            val w  = array[i + numElements * 2]   // Channel 2
+            val h  = array[i + numElements * 3]   // Channel 3
+            val objConf = sigmoid(array[i + numElements * 4])  // Channel 4
 
             var maxClassConf = -1f
             var maxClassIdx = -1
+
             for (j in 5 until numChannel) {
-                val clsConf = sigmoid(array[i * numChannel + j])
+                val clsConf = sigmoid(array[i + numElements * j])
                 if (clsConf > maxClassConf) {
                     maxClassConf = clsConf
                     maxClassIdx = j - 5
@@ -147,20 +166,30 @@ class Detector(
 
                 boxes.add(
                     BoundingBox(
-                        x1 = x1, y1 = y1, x2 = x2, y2 = y2,
-                        cx = cx, cy = cy, w = w, h = h,
+                        x1 = x1.coerceIn(0f, frameWidth.toFloat()),
+                        y1 = y1.coerceIn(0f, frameHeight.toFloat()),
+                        x2 = x2.coerceIn(0f, frameWidth.toFloat()),
+                        y2 = y2.coerceIn(0f, frameHeight.toFloat()),
+                        cx = cx,
+                        cy = cy,
+                        w = w,
+                        h = h,
                         confidence = conf,
                         cls = maxClassIdx,
                         clsName = label
                     )
                 )
+
                 Log.d("YOLO", "Detection confidence: $conf, class index: $maxClassIdx, objConf: $objConf")
                 Log.d("YOLO", "Top class score: $maxClassConf")
-
             }
         }
+
         return if (boxes.isEmpty()) null else applyNMS(boxes)
     }
+
+
+
 
 
     private fun applyNMS(boxes: List<BoundingBox>) : MutableList<BoundingBox> {
@@ -220,7 +249,7 @@ class Detector(
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.3F
+        private const val CONFIDENCE_THRESHOLD = 0.1F
         private const val IOU_THRESHOLD = 0.5F
     }
 }

@@ -91,6 +91,8 @@ import com.intel.realsense.librealsense.StreamType
 import com.intel.realsense.librealsense.UsbUtilities.ACTION_USB_PERMISSION
 
 import com.intel.realsense.librealsense.VideoFrame
+import java.io.File
+import java.io.FileOutputStream
 
 import java.nio.ByteBuffer
 
@@ -138,6 +140,10 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var speechListener: RecognitionListener
     private var isListening = false
     private var usbReady = false
+
+    //For single frame testing
+    private var hasSavedSingleFrame = false
+
 
 
     private val usbReceiver = object : BroadcastReceiver() {
@@ -266,6 +272,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             streamingThread = Thread {
                 while (!Thread.interrupted()) {
                     try {
+                        Thread.sleep(3000)
                         pipeline.waitForFrames(5000)?.use { frames ->
                             processFrame(frames)
                         }
@@ -275,6 +282,10 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                         } else {
                             Log.e(TAG, "Frame processing error", e)
                         }
+                    }
+                    catch (e: InterruptedException) {
+                        Log.e("YOLO", "Realsense thread interrupted during sleep")
+                        break
                     }
                 }
             }.apply { start() }
@@ -313,44 +324,87 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
+//    private fun processFrame(frames: FrameSet) {
+//        frames.first(StreamType.COLOR)?.use { colorFrame ->
+//            if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
+//                val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
+//                val bitmap = videoFrame.toBitmap()
+//
+//                frames.first(StreamType.DEPTH)?.use { depthFrame ->
+//                    if (depthFrame.`is`(Extension.DEPTH_FRAME)) {
+//                        currentDepthFrame = depthFrame.`as`(Extension.DEPTH_FRAME)
+//                    }
+//                }
+//
+//                Log.d(TAG, "Bitmap to detect size: ${bitmap.width}x${bitmap.height}")
+//                Log.d(TAG, "Bitmap recycled: ${bitmap.isRecycled}")
+//                val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+//                Log.d(TAG, "Center pixel ARGB: ${Integer.toHexString(pixel)}")
+//
+//
+//
+//                runOnUiThread {
+//                    binding.cameraPreview.setImageBitmap(bitmap)
+//                    binding.inferenceTime.text = ""
+//                }
+//
+//                //Run detection in the background
+//                if (isDetectionActive && ::detector.isInitialized) {
+//                    cameraExecutor.execute {
+//                        val startTime = System.currentTimeMillis()
+//                        detector.detect(bitmap)
+//                        Log.d(TAG, "RealSense bitmap size: ${bitmap.width}x${bitmap.height}")
+//
+//                        val endTime = System.currentTimeMillis()
+//                        Log.d(TAG, "Frame inference took ${endTime - startTime}ms")
+//                    }
+//                }
+//            }
+//        }
+//    }
+
     private fun processFrame(frames: FrameSet) {
+
+        if(hasSavedSingleFrame) return
+
         frames.first(StreamType.COLOR)?.use { colorFrame ->
             if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
                 val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
                 val bitmap = videoFrame.toBitmap()
 
-                frames.first(StreamType.DEPTH)?.use { depthFrame ->
-                    if (depthFrame.`is`(Extension.DEPTH_FRAME)) {
-                        currentDepthFrame = depthFrame.`as`(Extension.DEPTH_FRAME)
-                    }
-                }
+                saveBitmapAsPng(bitmap, "SingleFrame")
 
-                Log.d(TAG, "Bitmap to detect size: ${bitmap.width}x${bitmap.height}")
-                Log.d(TAG, "Bitmap recycled: ${bitmap.isRecycled}")
-                val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
-                Log.d(TAG, "Center pixel ARGB: ${Integer.toHexString(pixel)}")
+                val resized = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
 
+                detector.detect(resized)
 
-
-                runOnUiThread {
-                    binding.cameraPreview.setImageBitmap(bitmap)
-                    binding.inferenceTime.text = ""
-                }
-
-                //Run detection in the background
-                if (isDetectionActive && ::detector.isInitialized) {
-                    cameraExecutor.execute {
-                        val startTime = System.currentTimeMillis()
-                        detector.detect(bitmap)
-                        Log.d(TAG, "RealSense bitmap size: ${bitmap.width}x${bitmap.height}")
-
-                        val endTime = System.currentTimeMillis()
-                        Log.d(TAG, "Frame inference took ${endTime - startTime}ms")
-                    }
-                }
+                hasSavedSingleFrame = true
             }
         }
     }
+
+    private fun saveBitmapAsPng(bitmap: Bitmap, fileName: String) {
+        try {
+            val dir = File(getExternalFilesDir(null), "SingleFrame")
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
+
+            val file = File(dir, "$fileName.png")
+            FileOutputStream(file).use { out ->
+                val success = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                out.flush()
+                if (success) {
+                    Log.d("YOLO", "Saved frame to ${file.absolutePath}")
+                } else {
+                    Log.e("YOLO", "Bitmap.compress() failed")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("YOLO", "Failed to output bitmap", e)
+        }
+    }
+
 
 
     private fun VideoFrame.toBitmap(): Bitmap {
@@ -912,588 +966,3 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     }
 
 }
-
-
-
-
-/*package com.surendramaran.yolov8tflite
-
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.os.Bundle
-import android.speech.RecognizerIntent
-import android.speech.RecognitionListener
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.util.Log
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.*
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import com.surendramaran.yolov8tflite.Constants.LABELS_PATH
-import com.surendramaran.yolov8tflite.Constants.MODEL_PATH
-import com.surendramaran.yolov8tflite.databinding.ActivityMainBinding
-import java.util.*
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-// Add this to the top with other imports
-import android.os.Vibrator
-import android.os.VibrationEffect
-import android.content.Context
-import android.os.Handler
-import android.os.Looper
-
-
-enum class DetectionMode {
-    START_DETECTION, EXPLAIN_SURROUNDING
-}
-
-class MainActivity : AppCompatActivity(), Detector.DetectorListener {
-    private lateinit var binding: ActivityMainBinding
-    private val isFrontCamera = false
-
-    private var preview: Preview? = null
-    private var imageAnalyzer: ImageAnalysis? = null
-    private var camera: Camera? = null
-    private var cameraProvider: ProcessCameraProvider? = null
-    private lateinit var detector: Detector
-    private var isDetectionActive = false
-    private lateinit var cameraExecutor: ExecutorService
-
-    private lateinit var textToSpeech: TextToSpeech
-    private var isTTSInitialized = false
-
-    private lateinit var speechRecognizer: SpeechRecognizer
-    private lateinit var speechRecognizerIntent: Intent
-    private lateinit var vibrator: Vibrator
-    private var currentMode: DetectionMode = DetectionMode.START_DETECTION
-    private var isProcessingCommand = false
-
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
-        detector.setup()
-
-        // Initialize TTS
-        textToSpeech = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                val result = textToSpeech.setLanguage(Locale.US)
-                isTTSInitialized = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
-            } else {
-                Log.e(TAG, "TTS Initialization failed")
-            }
-        }
-
-        // Setup Speech Recognition
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        speechRecognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-        }
-
-        speechRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                matches?.let {
-                    val spokenText = it[0].lowercase(Locale.ROOT)
-
-                    if (!isProcessingCommand) {
-                        isProcessingCommand = true // Mark as processing command
-
-                        if ("start detection" in spokenText && !isDetectionActive) {
-                            if (allPermissionsGranted()) {
-                                if (isTTSInitialized) {
-                                    textToSpeech.speak("Starting detection now", TextToSpeech.QUEUE_FLUSH, null, null)
-                                }
-                                startCamera()
-                                isDetectionActive = true
-                                currentMode = DetectionMode.START_DETECTION
-                            }
-                        } else if ("stop detection" in spokenText && isDetectionActive) {
-                            if (isTTSInitialized) {
-                                textToSpeech.speak("Stopping detection", TextToSpeech.QUEUE_FLUSH, null, null)
-                            }
-                            stopCamera()
-                            isDetectionActive = false
-                        } else if ("explain" in spokenText) {
-                            if (isTTSInitialized) {
-                                textToSpeech.speak("Explaining the surroundings", TextToSpeech.QUEUE_FLUSH, null, null)
-                            }
-                            currentMode = DetectionMode.EXPLAIN_SURROUNDING
-                        }
-
-                        // Reset the flag after a short delay (to allow speech to finish)
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            isProcessingCommand = false
-                            startListening()  // Restart listening after a delay
-                        }, 1500)  // Delay of 1.5 seconds before accepting the next command
-                    }
-                }
-            }
-
-
-            override fun onError(error: Int) {
-                startListening()  // Restart listening on error
-            }
-
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-
-        startListening() // Start listening for voice commands as soon as the app is launched
-
-        if (!allPermissionsGranted()) {
-            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
-        }
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
-    }
-
-    private fun startListening() {
-        if (!isProcessingCommand) {
-            speechRecognizer.startListening(speechRecognizerIntent)
-        }
-    }
-
-    private fun stopListening() {
-        speechRecognizer.stopListening()
-    }
-
-
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            cameraProvider = cameraProviderFuture.get()
-            bindCameraUseCases()
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun stopCamera() {
-        camera?.let {
-            cameraProvider?.unbindAll()
-            camera = null
-        }
-    }
-
-    private fun bindCameraUseCases() {
-        val cameraProvider = cameraProvider ?: throw IllegalStateException("Camera initialization failed.")
-
-        val rotation = binding.viewFinder.display.rotation
-
-        val cameraSelector = CameraSelector
-            .Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-            .build()
-
-        preview = Preview.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-            .setTargetRotation(rotation)
-            .build()
-
-        imageAnalyzer = ImageAnalysis.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setTargetRotation(binding.viewFinder.display.rotation)
-            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .build()
-
-        imageAnalyzer?.setAnalyzer(cameraExecutor) { imageProxy ->
-            val bitmapBuffer = Bitmap.createBitmap(imageProxy.width, imageProxy.height, Bitmap.Config.ARGB_8888)
-            imageProxy.use { bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer) }
-            imageProxy.close()
-
-            val matrix = Matrix().apply {
-                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                if (isFrontCamera) {
-                    postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
-                }
-            }
-
-            val rotatedBitmap = Bitmap.createBitmap(
-                bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true
-            )
-
-            detector.detect(rotatedBitmap)
-        }
-
-        cameraProvider.unbindAll()
-
-        try {
-            camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
-            preview?.setSurfaceProvider(binding.viewFinder.surfaceProvider)
-        } catch (exc: Exception) {
-            Log.e(TAG, "Use case binding failed", exc)
-        }
-    }
-
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        if (it[Manifest.permission.CAMERA] == true && it[Manifest.permission.RECORD_AUDIO] == true) {
-            startCamera()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        detector.clear()
-        cameraExecutor.shutdown()
-
-        textToSpeech.stop()
-        textToSpeech.shutdown()
-
-        speechRecognizer.destroy()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (!allPermissionsGranted()) {
-            requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
-        }
-    }
-
-    override fun onEmptyDetect() {
-        binding.overlay.invalidate()
-    }
-
-    override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
-        runOnUiThread {
-            binding.inferenceTime.text = "${inferenceTime}ms"
-            binding.overlay.apply {
-                setResults(boundingBoxes)
-                invalidate()
-            }
-
-            if (isTTSInitialized && boundingBoxes.isNotEmpty()) {
-                val screenWidth = binding.viewFinder.width
-                val screenHeight = binding.viewFinder.height
-
-                // Filter bounding boxes with confidence > 50%
-                val filteredBoundingBoxes = boundingBoxes.filter { box ->
-                    box.cnf > 0.75 // Using 'cnf' as the confidence property
-                }
-
-                if (currentMode == DetectionMode.START_DETECTION) {
-                    val closestObject = filteredBoundingBoxes.minByOrNull { box ->
-                        val centerX = (box.x1 + box.x2) / 2
-                        val centerY = (box.y1 + box.y2) / 2
-                        val screenCenterX = screenWidth / 2
-                        val screenCenterY = screenHeight / 2
-                        // Calculate distance to center of screen
-                        Math.abs(centerX - screenCenterX) + Math.abs(centerY - screenCenterY)
-                    }
-
-                    closestObject?.let { box ->
-                        val label = box.clsName
-                        val message = "I see a $label."
-                        textToSpeech.speak(message, TextToSpeech.QUEUE_FLUSH, null, null)
-                    }
-
-                } else if (currentMode == DetectionMode.EXPLAIN_SURROUNDING) {
-                    // Collect descriptions for each detected object
-                    val descriptions = filteredBoundingBoxes.map { box ->
-                        val label = box.clsName
-                        val centerX = (box.x1 + box.x2) / 2
-                        val direction = when {
-                            centerX < screenWidth / 3 -> "on your left"
-                            centerX > 2 * screenWidth / 3 -> "on your right"
-                            else -> "ahead"
-                        }
-                        val area = (box.x2 - box.x1) * (box.y2 - box.y1)
-                        val proximity = when {
-                            area > screenWidth * screenHeight * 0.15 -> {
-                                "very close"
-                            }
-                            area > screenWidth * screenHeight * 0.05 -> "close"
-                            else -> "at a distance"
-                        }
-
-                        "$label $direction, $proximity"
-                    }
-
-                    // Join descriptions with commas
-                    val message = descriptions.joinToString(", ")
-                    textToSpeech.speak(message, TextToSpeech.QUEUE_FLUSH, null, null)
-                }
-            }
-        }
-    }
-
-
-    companion object {
-        private const val TAG = "Camera"
-        private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
-    }
-}
-*/
-/*
-package com.surendramaran.yolov8tflite
-
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.os.Bundle
-import android.speech.RecognizerIntent
-import android.speech.RecognitionListener
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.util.Log
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.*
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import com.surendramaran.yolov8tflite.Constants.LABELS_PATH
-import com.surendramaran.yolov8tflite.Constants.MODEL_PATH
-import com.surendramaran.yolov8tflite.databinding.ActivityMainBinding
-import java.util.*
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-
-class MainActivity : AppCompatActivity(), Detector.DetectorListener {
-    private lateinit var binding: ActivityMainBinding
-    private val isFrontCamera = false
-
-    private var preview: Preview? = null
-    private var imageAnalyzer: ImageAnalysis? = null
-    private var camera: Camera? = null
-    private var cameraProvider: ProcessCameraProvider? = null
-    private lateinit var detector: Detector
-
-    private lateinit var cameraExecutor: ExecutorService
-
-    private lateinit var textToSpeech: TextToSpeech
-    private var isTTSInitialized = false
-
-    private lateinit var speechRecognizer: SpeechRecognizer
-    private lateinit var speechRecognizerIntent: Intent
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
-        detector.setup()
-
-        // Initialize TTS
-        textToSpeech = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                val result = textToSpeech.setLanguage(Locale.US)
-                isTTSInitialized = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
-            } else {
-                Log.e(TAG, "TTS Initialization failed")
-            }
-        }
-
-        // Setup Speech Recognition
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        speechRecognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-        }
-
-        speechRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                matches?.let {
-                    val spokenText = it[0].lowercase(Locale.ROOT)
-                    if ("start detection" in spokenText) {
-                        if (isTTSInitialized) {
-                            textToSpeech.speak("Starting detection now", TextToSpeech.QUEUE_FLUSH, null, null)
-                        }
-                        startCamera() // Starts the camera
-                    } else if ("stop detection" in spokenText) {
-                        if (isTTSInitialized) {
-                            textToSpeech.speak("Stopping detection", TextToSpeech.QUEUE_FLUSH, null, null)
-                        }
-                        stopCamera() // Stop the camera
-                    }
-                }
-                startListening() // Restart listening after command
-            }
-
-            override fun onError(error: Int) {
-                startListening() // Restart listening on error
-            }
-
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-
-        startListening() // Start listening for voice commands as soon as the app is launched
-
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
-        }
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
-    }
-
-    private fun startListening() {
-        speechRecognizer.startListening(speechRecognizerIntent)
-    }
-
-    private fun stopListening() {
-        speechRecognizer.stopListening()
-    }
-
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            cameraProvider = cameraProviderFuture.get()
-            bindCameraUseCases()
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun stopCamera() {
-        camera?.let {
-            cameraProvider?.unbindAll()
-            camera = null
-        }
-    }
-
-    private fun bindCameraUseCases() {
-        val cameraProvider = cameraProvider ?: throw IllegalStateException("Camera initialization failed.")
-
-        val rotation = binding.viewFinder.display.rotation
-
-        val cameraSelector = CameraSelector
-            .Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-            .build()
-
-        preview = Preview.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-            .setTargetRotation(rotation)
-            .build()
-
-        imageAnalyzer = ImageAnalysis.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setTargetRotation(binding.viewFinder.display.rotation)
-            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .build()
-
-        imageAnalyzer?.setAnalyzer(cameraExecutor) { imageProxy ->
-            val bitmapBuffer = Bitmap.createBitmap(imageProxy.width, imageProxy.height, Bitmap.Config.ARGB_8888)
-            imageProxy.use { bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer) }
-            imageProxy.close()
-
-            val matrix = Matrix().apply {
-                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                if (isFrontCamera) {
-                    postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
-                }
-            }
-
-            val rotatedBitmap = Bitmap.createBitmap(
-                bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true
-            )
-
-            detector.detect(rotatedBitmap)
-        }
-
-        cameraProvider.unbindAll()
-
-        try {
-            camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
-            preview?.setSurfaceProvider(binding.viewFinder.surfaceProvider)
-        } catch (exc: Exception) {
-            Log.e(TAG, "Use case binding failed", exc)
-        }
-    }
-
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        if (it[Manifest.permission.CAMERA] == true && it[Manifest.permission.RECORD_AUDIO] == true) {
-            startCamera()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        detector.clear()
-        cameraExecutor.shutdown()
-
-        textToSpeech.stop()
-        textToSpeech.shutdown()
-
-        speechRecognizer.destroy()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
-        }
-    }
-
-    override fun onEmptyDetect() {
-        binding.overlay.invalidate()
-    }
-
-    override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
-        runOnUiThread {
-            binding.inferenceTime.text = "${inferenceTime}ms"
-            binding.overlay.apply {
-                setResults(boundingBoxes)
-                invalidate()
-            }
-
-            if (isTTSInitialized && boundingBoxes.isNotEmpty()) {
-                val detectedLabels = boundingBoxes.joinToString(", ") { it.clsName }
-                textToSpeech.speak("I see: $detectedLabels", TextToSpeech.QUEUE_FLUSH, null, null)
-            }
-        }
-    }
-
-    companion object {
-        private const val TAG = "Camera"
-        private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
-    }
-}
-*/

@@ -14,4 +14,3 @@ no pedestrian lane
 pedestrian crossing sign
 pedestrian lane
 red pedestrian light
-stairs
