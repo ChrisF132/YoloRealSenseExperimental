@@ -355,54 +355,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
-//    private fun processFrame(frames: FrameSet) {
-//
-//        if(hasSavedSingleFrame) return
-//
-//        frames.first(StreamType.COLOR)?.use { colorFrame ->
-//            if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
-//                val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
-//                val bitmap = videoFrame.toBitmap()
-//
-//                saveBitmapAsPng(bitmap, "SingleFrame")
-//
-//                val resized = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
-//
-//                saveBitmapAsPng(resized, "ResizedSingleFrame")
-//
-//                detector.detect(resized)
-//
-//                hasSavedSingleFrame = true
-//
-//
-//            }
-//        }
-//    }
-//
-//    private fun saveBitmapAsPng(bitmap: Bitmap, fileName: String) {
-//        try {
-//            val dir = File(getExternalFilesDir(null), "SingleFrame")
-//            if (!dir.exists()) {
-//                dir.mkdirs()
-//            }
-//
-//            val file = File(dir, "$fileName.png")
-//            FileOutputStream(file).use { out ->
-//                val success = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-//                out.flush()
-//                if (success) {
-//                    Log.d("YOLO", "Saved frame to ${file.absolutePath}")
-//                } else {
-//                    Log.e("YOLO", "Bitmap.compress() failed")
-//                }
-//            }
-//        } catch (e: Exception) {
-//            Log.e("YOLO", "Failed to output bitmap", e)
-//        }
-//    }
-
-
-
     private fun VideoFrame.toBitmap(): Bitmap {
         return try {
             val byteArray = ByteArray(dataSize)
@@ -1567,5 +1519,52 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         )
     }
 }
+
+
+//    private fun processFrame(frames: FrameSet) {
+//
+//        if(hasSavedSingleFrame) return
+//
+//        frames.first(StreamType.COLOR)?.use { colorFrame ->
+//            if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
+//                val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
+//                val bitmap = videoFrame.toBitmap()
+//
+//                saveBitmapAsPng(bitmap, "SingleFrame")
+//
+//                val resized = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
+//
+//                saveBitmapAsPng(resized, "ResizedSingleFrame")
+//
+//                detector.detect(resized)
+//
+//                hasSavedSingleFrame = true
+//
+//
+//            }
+//        }
+//    }
+//
+//    private fun saveBitmapAsPng(bitmap: Bitmap, fileName: String) {
+//        try {
+//            val dir = File(getExternalFilesDir(null), "SingleFrame")
+//            if (!dir.exists()) {
+//                dir.mkdirs()
+//            }
+//
+//            val file = File(dir, "$fileName.png")
+//            FileOutputStream(file).use { out ->
+//                val success = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+//                out.flush()
+//                if (success) {
+//                    Log.d("YOLO", "Saved frame to ${file.absolutePath}")
+//                } else {
+//                    Log.e("YOLO", "Bitmap.compress() failed")
+//                }
+//            }
+//        } catch (e: Exception) {
+//            Log.e("YOLO", "Failed to output bitmap", e)
+//        }
+//    }
 */
 

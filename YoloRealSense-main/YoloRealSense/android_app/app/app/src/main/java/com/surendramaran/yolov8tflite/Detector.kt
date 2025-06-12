@@ -63,10 +63,17 @@ class Detector(
         Log.d("YOLO", "Input shape: ${inputShape.contentToString()}")
         Log.d("YOLO", "Output shape: ${outputShape.contentToString()}")
 
+<<<<<<< HEAD
         tensorWidth = inputShape[1]
         tensorHeight = inputShape[2]
         numChannel = outputShape[1] // 21
         numElements = outputShape[2] // =8400
+=======
+        tensorWidth = inputShape[2]
+        tensorHeight = inputShape[1]
+        numChannel = outputShape[1] 
+        numElements = outputShape[2] 
+>>>>>>> 518e4cc35c36157efe8b458829f0c55b72384be7
 
 
         imageProcessor = ImageProcessor.Builder()
@@ -223,7 +230,17 @@ class Detector(
         val boxes = mutableListOf<BoundingBox>()
 
         for (i in 0 until numElements) {
+<<<<<<< HEAD
             var maxConf = -1f
+=======
+            val cx = array[i]                    
+            val cy = array[i + numElements]       
+            val w  = array[i + numElements * 2]  
+            val h  = array[i + numElements * 3]  
+            val objConf = sigmoid(array[i + numElements * 4]) 
+
+            var maxClassConf = -1f
+>>>>>>> 518e4cc35c36157efe8b458829f0c55b72384be7
             var maxClassIdx = -1
 
             for (j in 4 until (4 + labels.size)) {
