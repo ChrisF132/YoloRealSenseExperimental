@@ -101,16 +101,7 @@ enum class DetectionMode {
 }
 
 class MainActivity : AppCompatActivity(), Detector.DetectorListener {
-    companion object {
-        private const val TAG = "ObjectDetection"
-        private const val REQUEST_CODE_PERMISSIONS = 10
-        private const val REQUEST_CODE_AUDIO_PERMISSION = 123
-        private val REQUIRED_PERMISSIONS = arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.MODIFY_AUDIO_SETTINGS
-        )
-    }
+
     private var testvalue = true
     private lateinit var binding: ActivityMainBinding
     private lateinit var detector: Detector
@@ -143,6 +134,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     //For single frame testing
     private var hasSavedSingleFrame = false
+    private var isDetectorBusy = false
+
 
 
 
@@ -272,7 +265,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             streamingThread = Thread {
                 while (!Thread.interrupted()) {
                     try {
-                        Thread.sleep(3000)
                         pipeline.waitForFrames(5000)?.use { frames ->
                             processFrame(frames)
                         }
@@ -324,88 +316,90 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
-//    private fun processFrame(frames: FrameSet) {
-//        frames.first(StreamType.COLOR)?.use { colorFrame ->
-//            if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
-//                val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
-//                val bitmap = videoFrame.toBitmap()
-//
-//                frames.first(StreamType.DEPTH)?.use { depthFrame ->
-//                    if (depthFrame.`is`(Extension.DEPTH_FRAME)) {
-//                        currentDepthFrame = depthFrame.`as`(Extension.DEPTH_FRAME)
-//                    }
-//                }
-//
-//                Log.d(TAG, "Bitmap to detect size: ${bitmap.width}x${bitmap.height}")
-//                Log.d(TAG, "Bitmap recycled: ${bitmap.isRecycled}")
-//                val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
-//                Log.d(TAG, "Center pixel ARGB: ${Integer.toHexString(pixel)}")
-//
-//
-//
-//                runOnUiThread {
-//                    binding.cameraPreview.setImageBitmap(bitmap)
-//                    binding.inferenceTime.text = ""
-//                }
-//
-//                //Run detection in the background
-//                if (isDetectionActive && ::detector.isInitialized) {
-//                    cameraExecutor.execute {
-//                        val startTime = System.currentTimeMillis()
-//                        detector.detect(bitmap)
-//                        Log.d(TAG, "RealSense bitmap size: ${bitmap.width}x${bitmap.height}")
-//
-//                        val endTime = System.currentTimeMillis()
-//                        Log.d(TAG, "Frame inference took ${endTime - startTime}ms")
-//                    }
-//                }
-//            }
-//        }
-//    }
-
     private fun processFrame(frames: FrameSet) {
-
-        if(hasSavedSingleFrame) return
-
         frames.first(StreamType.COLOR)?.use { colorFrame ->
             if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
                 val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
                 val bitmap = videoFrame.toBitmap()
 
-                saveBitmapAsPng(bitmap, "SingleFrame")
+                frames.first(StreamType.DEPTH)?.use { depthFrame ->
+                    if (depthFrame.`is`(Extension.DEPTH_FRAME)) {
+                        currentDepthFrame = depthFrame.`as`(Extension.DEPTH_FRAME)
+                    }
+                }
 
-                val resized = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
+                Log.d(TAG, "Bitmap to detect size: ${bitmap.width}x${bitmap.height}")
+                Log.d(TAG, "Bitmap recycled: ${bitmap.isRecycled}")
+                val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+                Log.d(TAG, "Center pixel ARGB: ${Integer.toHexString(pixel)}")
 
-                detector.detect(resized)
-
-                hasSavedSingleFrame = true
 
 
-            }
-        }
-    }
+                runOnUiThread {
+                    binding.cameraPreview.setImageBitmap(bitmap)
+                    binding.inferenceTime.text = ""
+                }
 
-    private fun saveBitmapAsPng(bitmap: Bitmap, fileName: String) {
-        try {
-            val dir = File(getExternalFilesDir(null), "SingleFrame")
-            if (!dir.exists()) {
-                dir.mkdirs()
-            }
-
-            val file = File(dir, "$fileName.png")
-            FileOutputStream(file).use { out ->
-                val success = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                out.flush()
-                if (success) {
-                    Log.d("YOLO", "Saved frame to ${file.absolutePath}")
-                } else {
-                    Log.e("YOLO", "Bitmap.compress() failed")
+                //Run detection in the background
+                if (isDetectionActive && ::detector.isInitialized && !isDetectorBusy) {
+                    isDetectorBusy = true
+                    cameraExecutor.execute {
+                        val startTime = System.currentTimeMillis()
+                        detector.detect(bitmap)
+                        val endTime = System.currentTimeMillis()
+                        Log.d(TAG, "Frame inference took ${endTime - startTime}ms")
+                        isDetectorBusy = false
+                    }
                 }
             }
-        } catch (e: Exception) {
-            Log.e("YOLO", "Failed to output bitmap", e)
         }
     }
+
+//    private fun processFrame(frames: FrameSet) {
+//
+//        if(hasSavedSingleFrame) return
+//
+//        frames.first(StreamType.COLOR)?.use { colorFrame ->
+//            if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
+//                val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
+//                val bitmap = videoFrame.toBitmap()
+//
+//                saveBitmapAsPng(bitmap, "SingleFrame")
+//
+//                val resized = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
+//
+//                saveBitmapAsPng(resized, "ResizedSingleFrame")
+//
+//                detector.detect(resized)
+//
+//                hasSavedSingleFrame = true
+//
+//
+//            }
+//        }
+//    }
+//
+//    private fun saveBitmapAsPng(bitmap: Bitmap, fileName: String) {
+//        try {
+//            val dir = File(getExternalFilesDir(null), "SingleFrame")
+//            if (!dir.exists()) {
+//                dir.mkdirs()
+//            }
+//
+//            val file = File(dir, "$fileName.png")
+//            FileOutputStream(file).use { out ->
+//                val success = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+//                out.flush()
+//                if (success) {
+//                    Log.d("YOLO", "Saved frame to ${file.absolutePath}")
+//                } else {
+//                    Log.e("YOLO", "Bitmap.compress() failed")
+//                }
+//            }
+//        } catch (e: Exception) {
+//            Log.e("YOLO", "Failed to output bitmap", e)
+//        }
+//    }
 
 
 
@@ -799,6 +793,14 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 val scaleX = frameWidth / tensorInputWidth
                 val scaleY = frameHeight / tensorInputHeight
 
+                val dfWidth = currentDepthFrame?.width ?: 0
+                val dfHeight = currentDepthFrame?.height ?: 0
+
+                if(dfWidth <= 0 || dfHeight <= 0) {
+                    Log.e("YOLO", "Invalid dimensions, width = $dfWidth height = $dfHeight")
+                    return@runOnUiThread
+                }
+
                 val realX = (box.cx * (currentDepthFrame?.width ?: 640)).toInt().coerceIn(0, (currentDepthFrame?.width ?: 640) - 1)
                 val realY = (box.cy * (currentDepthFrame?.height ?: 480)).toInt().coerceIn(0, (currentDepthFrame?.height ?: 480) - 1)
 
@@ -965,6 +967,17 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         safeStartListening()
 
+    }
+
+    companion object {
+        private const val TAG = "ObjectDetection"
+        private const val REQUEST_CODE_PERMISSIONS = 10
+        private const val REQUEST_CODE_AUDIO_PERMISSION = 123
+        private val REQUIRED_PERMISSIONS = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.MODIFY_AUDIO_SETTINGS
+        )
     }
 
 }
