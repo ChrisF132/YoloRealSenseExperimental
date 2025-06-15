@@ -63,17 +63,12 @@ class Detector(
         Log.d("YOLO", "Input shape: ${inputShape.contentToString()}")
         Log.d("YOLO", "Output shape: ${outputShape.contentToString()}")
 
-<<<<<<< HEAD
-        tensorWidth = inputShape[1]
-        tensorHeight = inputShape[2]
-        numChannel = outputShape[1] // 21
-        numElements = outputShape[2] // =8400
-=======
+
         tensorWidth = inputShape[2]
         tensorHeight = inputShape[1]
         numChannel = outputShape[1] 
         numElements = outputShape[2] 
->>>>>>> 518e4cc35c36157efe8b458829f0c55b72384be7
+
 
 
         imageProcessor = ImageProcessor.Builder()
@@ -119,32 +114,31 @@ class Detector(
         val processedImage = imageProcessor.process(tensorImage)
         val imageBuffer = processedImage.buffer
 
-        // VERY IMPORTANT: Check the content of this buffer
-        val floatArrayFromBuffer = FloatArray(imageBuffer.capacity() / 4) // Assuming FLOAT32, capacity is total bytes
+       
+        val floatArrayFromBuffer = FloatArray(imageBuffer.capacity() / 4) 
         imageBuffer.asFloatBuffer().get(floatArrayFromBuffer)
         Log.d("YOLO", "Processed Image Buffer (first 50 values): ${floatArrayFromBuffer.take(50).joinToString()}")
         Log.d("YOLO", "Processed Image Buffer (last 50 values): ${floatArrayFromBuffer.takeLast(50).joinToString()}")
-        // Optionally, check a middle section too to ensure it's not just edges that are bad
+       
         Log.d("YOLO", "Processed Image Buffer (middle 50 values): ${floatArrayFromBuffer.slice(floatArrayFromBuffer.size / 2 - 25 until floatArrayFromBuffer.size / 2 + 25).joinToString()}")
 
-        imageBuffer.rewind() // Crucial: Rewind the buffer after reading from it!
+        imageBuffer.rewind() 
 
         val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
         interpreter?.run(imageBuffer, output.buffer)
 
         val rawOutput = output.floatArray
-        // Check first 20 values (which you already have)
+       
         Log.d("YOLO", "First 20 raw output values: ${rawOutput.take(20).joinToString()}")
 
-// Check specific channels for the first few elements
-        for (i in 0 until minOf(10, numElements)) { // Log for first 10 potential detections
+        for (i in 0 until minOf(10, numElements)) {
             val rawCx = rawOutput[i]
             val rawCy = rawOutput[i + numElements]
             val rawW = rawOutput[i + numElements * 2]
             val rawH = rawOutput[i + numElements * 3]
             val rawObjConf = rawOutput[i + numElements * 4]
 
-            var rawMaxClassConf = -Float.MAX_VALUE // Use a very small float for initial comparison
+            var rawMaxClassConf = -Float.MAX_VALUE 
             var rawMaxClassIdx = -1
             for (j in 5 until numChannel) {
                 val rawClsConf = rawOutput[i + numElements * j]
@@ -230,17 +224,9 @@ class Detector(
         val boxes = mutableListOf<BoundingBox>()
 
         for (i in 0 until numElements) {
-<<<<<<< HEAD
-            var maxConf = -1f
-=======
-            val cx = array[i]                    
-            val cy = array[i + numElements]       
-            val w  = array[i + numElements * 2]  
-            val h  = array[i + numElements * 3]  
-            val objConf = sigmoid(array[i + numElements * 4]) 
 
-            var maxClassConf = -1f
->>>>>>> 518e4cc35c36157efe8b458829f0c55b72384be7
+            var maxConf = -1f
+
             var maxClassIdx = -1
 
             for (j in 4 until (4 + labels.size)) {
@@ -278,11 +264,11 @@ class Detector(
                         y1 = y1.coerceIn(0f, frameHeight.toFloat()),
                         x2 = x2.coerceIn(0f, frameWidth.toFloat()),
                         y2 = y2.coerceIn(0f, frameHeight.toFloat()),
-                        cx = cx, // keep cx, cy normalized for depth
-                        cy = cy, // keep cx, cy normalized for depth
+                        cx = cx, 
+                        cy = cy, 
                         w = w,
                         h = h,
-                        confidence = maxConf, // Use the raw maxConf directly!
+                        confidence = maxConf, 
                         cls = maxClassIdx,
                         clsName = label
                     )
