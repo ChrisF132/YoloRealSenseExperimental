@@ -3,96 +3,54 @@ package com.surendramaran.yolov8tflite
 
 
 import android.Manifest
-
 import android.app.PendingIntent
-
 import android.content.BroadcastReceiver
-
 import android.content.Intent
-
 import android.content.pm.PackageManager
-
 import android.graphics.Bitmap
-
 import android.media.AudioAttributes
-
 import android.media.AudioDeviceInfo
-
 import android.media.AudioFocusRequest
-
 import android.media.AudioManager
-
 import android.media.MediaRecorder
-
 import android.os.Bundle
-
 import android.speech.RecognizerIntent
-
 import android.speech.RecognitionListener
-
 import android.speech.SpeechRecognizer
-
 import android.speech.tts.TextToSpeech
-
 import android.util.Log
-
 import androidx.appcompat.app.AppCompatActivity
-
 import androidx.core.app.ActivityCompat
-
 import androidx.core.content.ContextCompat
-
 import com.surendramaran.yolov8tflite.Constants.LABELS_PATH
-
 import com.surendramaran.yolov8tflite.Constants.MODEL_PATH
-
 import com.surendramaran.yolov8tflite.databinding.ActivityMainBinding
-
 import java.util.*
-
 import java.util.concurrent.ExecutorService
-
 import java.util.concurrent.Executors
-
 import android.os.Vibrator
-
 import android.os.VibrationEffect
-
 import android.content.Context
-
 import android.content.IntentFilter
-
 import android.hardware.usb.UsbDevice
-
 import android.hardware.usb.UsbManager
-
 import android.os.Handler
-
 import android.os.Looper
-
 import com.intel.realsense.librealsense.Config
-
 import com.intel.realsense.librealsense.DepthFrame
-
 import com.intel.realsense.librealsense.DeviceListener
-
 import com.intel.realsense.librealsense.Extension
-
 import com.intel.realsense.librealsense.FrameSet
-
 import com.intel.realsense.librealsense.Pipeline
-
 import com.intel.realsense.librealsense.RsContext
-
 import com.intel.realsense.librealsense.StreamFormat
-
 import com.intel.realsense.librealsense.StreamType
-
 import com.intel.realsense.librealsense.UsbUtilities.ACTION_USB_PERMISSION
-
 import com.intel.realsense.librealsense.VideoFrame
-import java.io.File
-import java.io.FileOutputStream
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 import java.nio.ByteBuffer
 
@@ -131,6 +89,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var speechListener: RecognitionListener
     private var isListening = false
     private var usbReady = false
+    private var isReadingText = false
+    private lateinit var textRecognizer: TextRecognizer
+    private var lastColorBitmap: Bitmap? = null
 
     //For single frame testing
     private var hasSavedSingleFrame = false
@@ -202,9 +163,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isBluetoothScoOn = false
         audioManager.isSpeakerphoneOn = true
-       
 
-        audioManager.setParameters("no_usb_audio=1") 
+
+        audioManager.setParameters("no_usb_audio=1")
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.setParameters("no_usb_audio=1")
 
@@ -321,6 +282,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             if (colorFrame.`is`(Extension.VIDEO_FRAME)) {
                 val videoFrame = colorFrame.`as`<VideoFrame>(Extension.VIDEO_FRAME)
                 val bitmap = videoFrame.toBitmap()
+                val bitmapScaled = Bitmap.createScaledBitmap(bitmap, 640, 640, false)
 
                 frames.first(StreamType.DEPTH)?.use { depthFrame ->
                     if (depthFrame.`is`(Extension.DEPTH_FRAME)) {
@@ -333,10 +295,10 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
                 Log.d(TAG, "Center pixel ARGB: ${Integer.toHexString(pixel)}")
 
-
+                lastColorBitmap = bitmap
 
                 runOnUiThread {
-                    binding.cameraPreview.setImageBitmap(bitmap)
+                    binding.cameraPreview.setImageBitmap(bitmapScaled)
                     binding.inferenceTime.text = ""
                 }
 
@@ -345,7 +307,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     isDetectorBusy = true
                     cameraExecutor.execute {
                         val startTime = System.currentTimeMillis()
-                        detector.detect(bitmap)
+                        detector.detect(bitmapScaled)
                         val endTime = System.currentTimeMillis()
                         Log.d(TAG, "Frame inference took ${endTime - startTime}ms")
                         isDetectorBusy = false
@@ -375,7 +337,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-
+        textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val filter = IntentFilter().apply {
 
             addAction(ACTION_USB_PERMISSION)
@@ -494,6 +456,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                                     isDetectionActive = true
                                     currentMode = DetectionMode.START_DETECTION
                                     trackedObjects.clear()
+                                    isReadingText = false
 
                                     val connected = try {
                                         rsContext.queryDevices().deviceCount > 0
@@ -516,10 +479,24 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                                 speak("Stopping detection")
                                 stopCamera()
                                 isDetectionActive = false
+                                isReadingText = false
                             }
                             "explain" in spokenText -> {
                                 speak("Explaining the surroundings")
                                 currentMode = DetectionMode.EXPLAIN_SURROUNDING
+                                isReadingText = false
+                            }
+
+                            "read text" in spokenText -> {
+                                if (isDetectionActive) {
+                                    speak("Reading text")
+                                    isReadingText = true
+                                    lastColorBitmap?.let { bitmap ->
+                                        processImageForText(bitmap)
+                                    }
+                                } else {
+                                    speak("Please start detection first")
+                                }
                             }
                         }
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -585,7 +562,35 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     }
 
+    private fun processImageForText(bitmap: Bitmap) {
+        Log.d(TAG, "reached processImage")
+        val image = InputImage.fromBitmap(bitmap, 0)
+        textRecognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                val textBlocks = visionText.textBlocks
+                if (textBlocks.isNotEmpty()) {
+                    val fullText = StringBuilder()
+                    for (block in textBlocks) {
+                        fullText.append(block.text).append("\n")
+                    }
+                    val textToRead = fullText.toString().trim()
+                    if (textToRead.isNotEmpty()) {
+                        speak("I found text: $textToRead")
 
+                    } else {
+                        speak("No readable text found")
+                    }
+                } else {
+                    speak("No text detected")
+                }
+                isReadingText = false
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Text recognition failed", e)
+                speak("Failed to read text")
+                isReadingText = false
+            }
+    }
 
     private fun safeStartListening() {
         if (!isProcessingCommand && acquireAudioFocus()) {
@@ -713,7 +718,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         Log.d(TAG, "YOLO DETECTION TRIGGERED: ${boundingBoxes.size} boxes")
 
         runOnUiThread {
-
+            Log.d("DrawCheck", "Bitmap dimensions before drawing: ${binding.cameraPreview.drawable.intrinsicWidth} x ${binding.cameraPreview.drawable.intrinsicHeight}")
             binding.inferenceTime.text = "${inferenceTime}ms"
 
             binding.overlay.apply {
@@ -724,6 +729,12 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
             }
 
+            val bitmap = binding.viewFinder.bitmap
+
+            if (isReadingText && bitmap != null) {
+                processImageForText(bitmap)
+                return@runOnUiThread
+            }
 
 
             if (!isTTSInitialized || !isDetectionActive) return@runOnUiThread

@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.util.Log
 import android.view.View
 import androidx.core.content.ContextCompat
 import java.util.LinkedList
@@ -63,10 +64,17 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
 
         results.forEach { box ->
             // 1. Convert normalized coordinates to view coordinates
-            val left = box.x1 * width
-            val top = box.y1 * height
-            val right = box.x2 * width
-            val bottom = box.y2 * height
+            val scaleX = width / 640f  // 1080 / 640
+            val scaleY = height / 640f // 1440 / 640
+
+            val left = box.x1 * scaleX
+            val top = box.y1 * scaleY
+            val right = box.x2 * scaleX
+            val bottom = box.y2 * scaleY
+
+            Log.d("BOX_DRAW", "Bitmap size: ${width} x ${height}")
+            Log.d("BOX_DRAW", "Drawing box: (${box.x1}, ${box.y1}), (${box.x2}, ${box.y2})")
+
 
             // 2. Draw bounding box (keep your existing style)
             canvas.drawRect(left, top, right, bottom, boxPaint)

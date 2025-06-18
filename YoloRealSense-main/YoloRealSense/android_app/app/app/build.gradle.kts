@@ -185,6 +185,9 @@ dependencies {
 
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 
+    //Text implementation
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+
 }
 
 
